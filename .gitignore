@@ -9,11 +9,15 @@ __pycache__/
 .venv/
 venv/
 
-# Data
-data/
+# Python cache
+__pycache__/
+*.pyc
 
-# Model files
-models/
+# Jupyter
+.ipynb_checkpoints/
 
-# Reports
-reports/
+# pytest
+.pytest_cache/
+
+# Temporary files
+tempCodeRunnerFile.py
