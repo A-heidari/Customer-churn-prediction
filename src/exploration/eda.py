@@ -1,5 +1,6 @@
 from src.data.ingestion.load_data import load_data
 
+
 df = load_data("Telco.csv")
 print(df.head())
 
@@ -47,8 +48,7 @@ print(df.dtypes)
 
 
 
-print("\n--- gender and Churn mean")
+print("\n--- gender and Churn percentage ---")
 print(df.groupby("gender")["Churn"].value_counts(normalize=True) * 100)
-print("\n--- Contract and Churn mean")
+print("\n--- Contract and Churn percentage ---")
 print(df.groupby("Contract")["Churn"].value_counts(normalize=True) * 100)
-
