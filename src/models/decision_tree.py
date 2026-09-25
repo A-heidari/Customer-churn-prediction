@@ -22,8 +22,8 @@ df["TotalCharges"] = pd.to_numeric(
     errors="coerce"
 )
 
-# Remove rows with missing TotalCharges
-df = df.dropna(subset=["TotalCharges"])
+# Fill missing TotalCharges (tenure == 0 customers) with 0 instead of dropping rows
+df["TotalCharges"] = df["TotalCharges"].fillna(0)
 
 # Churn → numerical
 df["Churn"] = df["Churn"].map({
@@ -110,7 +110,7 @@ categorical_features = [
 ]
 
 # -----------------------------------------
-# preprocessor 
+# preprocessor
 # -----------------------------------------
 
 preprocessor = ColumnTransformer([
@@ -119,7 +119,7 @@ preprocessor = ColumnTransformer([
 ])
 
 # -----------------------------------------
-# preprocessor 
+# Apply preprocessing
 # -----------------------------------------
 
 X_train_processed = preprocessor.fit_transform(X_train)
@@ -137,10 +137,13 @@ print(feature_names)
 
 depths = [1, 2, 3, 4, 5, 7, 10, 15, 20]
 
-for depth in depths: 
+best_f1 = -1
+best_depth = None
+best_tree = None
 
+for depth in depths:
 
-    tree =  DecisionTreeClassifier(
+    tree = DecisionTreeClassifier(
         criterion="gini",
         max_depth=depth,
         random_state=42
@@ -151,13 +154,6 @@ for depth in depths:
     print("Tree depth: ", tree.get_depth())
     print("Number of leaves: ", tree.get_n_leaves())
 
-
-# -----------------------------------------
-# train prediction
-# -----------------------------------------
-
-    y_train_pred = tree.predict(X_train_processed)
-
 # -----------------------------------------
 # TEST PREDICTION
 # -----------------------------------------
@@ -165,25 +161,7 @@ for depth in depths:
     y_test_pred = tree.predict(X_test_processed)
 
 # -----------------------------------------
-# TRAIN Evaluation
-# -----------------------------------------
-
-    # accuracy = accuracy_score(y_train, y_train_pred)
-    # recall = recall_score(y_train, y_train_pred)
-    # precision = precision_score(y_train, y_train_pred)
-    # f1 = f1_score(y_train, y_train_pred)
-    # cm = confusion_matrix(y_train, y_train_pred)
-
-
-    # print("\n--- EVALUATION ---")
-    # print("ACCURACY : ", accuracy)
-    # print("RECALL :", recall)
-    # print("PRECISION: ", precision)
-    # print("F1 : ", f1)
-    # print(cm)
-
-# -----------------------------------------
-# TEST EVALUATION 
+# TEST EVALUATION
 # -----------------------------------------
 
     accuracy = accuracy_score(y_test, y_test_pred)
@@ -192,33 +170,41 @@ for depth in depths:
     f1 = f1_score(y_test, y_test_pred)
     cm = confusion_matrix(y_test, y_test_pred)
 
-
     print("\n--- EVALUATION ---")
     print("ACCURACY : ", accuracy)
     print("RECALL :", recall)
     print("PRECISION: ", precision)
     print("F1 : ", f1)
     print(cm)
-  
+
+    if f1 > best_f1:
+        best_f1 = f1
+        best_depth = depth
+        best_tree = tree
 
 # -----------------------------------------
-# Cross validation
+# Cross validation (run only once, on training data)
 # -----------------------------------------
 
-    model_pipeline = Pipeline([
+model_pipeline = Pipeline([
     ("preprocessor", preprocessor),
     ("tree", DecisionTreeClassifier(
         criterion="gini",
-        max_depth=depth,
+        max_depth=best_depth,
         random_state=42
     ))
 ])
 
-
-    scores = cross_val_score(
+cv_scores = cross_val_score(
     model_pipeline,
-    X,
-    y,
+    X_train,
+    y_train,
     cv=5,
     scoring="f1"
 )
+
+print("\n--- BEST MODEL ---")
+print("Best depth:", best_depth)
+print("Test F1:", best_f1)
+print("CV F1 scores:", cv_scores)
+print("CV F1 mean:", cv_scores.mean(), "± ", cv_scores.std())
