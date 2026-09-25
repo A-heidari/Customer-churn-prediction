@@ -21,6 +21,11 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
 
     # Fix TotalCharges: stored as string, blank for tenure == 0 customers
     df["TotalCharges"] = pd.to_numeric(df["TotalCharges"], errors="coerce")
+    
+    df["TotalCharges"] = pd.to_numeric(df["TotalCharges"], errors="coerce")
+
+    print("\nMissing TotalCharges:")
+    print(df[df["TotalCharges"].isna()][["tenure", "TotalCharges", "Churn"]])
     df["TotalCharges"] = df["TotalCharges"].fillna(0)
 
     # Normalize "No xxx service" values into a clean "No"
