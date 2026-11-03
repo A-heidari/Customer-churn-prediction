@@ -1,78 +1,78 @@
+
 import pandas as pd
 
 from src.data.ingestion.load_data import load_data
-from sklearn.model_selection import (train_test_split, cross_val_score)
+
+from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.tree import DecisionTreeClassifier
 
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.compose import ColumnTransformer
-
-
-from sklearn.metrics import (accuracy_score, confusion_matrix,recall_score, precision_score, f1_score)
-
-
 from sklearn.pipeline import Pipeline
+
+from sklearn.metrics import (
+    accuracy_score,
+    confusion_matrix,
+    recall_score,
+    precision_score,
+    f1_score,
+    roc_auc_score,
+    classification_report
+)
+
+
+# -----------------------------------------
+# 1. Load and prepare data
+# -----------------------------------------
 
 df = load_data("Telco.csv")
 
-# TotalCharges → numeric
 df["TotalCharges"] = pd.to_numeric(
     df["TotalCharges"],
     errors="coerce"
 )
 
-# Fill missing TotalCharges (tenure == 0 customers) with 0 instead of dropping rows
 df["TotalCharges"] = df["TotalCharges"].fillna(0)
 
-# Churn → numerical
 df["Churn"] = df["Churn"].map({
     "No": 0,
     "Yes": 1
 })
 
-# Remove customer identifier
 df = df.drop(columns=["customerID"])
 
-
-print(df.shape)
-print(df["Churn"].value_counts())
-print(df["Churn"].dtype)
-
-
-
-# ----------------------------------------------
-
 X = df.drop(columns=["Churn"])
-
 y = df["Churn"]
+
+
+# -----------------------------------------
+# 2. Train / Test Split
+# -----------------------------------------
 
 X_train, X_test, y_train, y_test = train_test_split(
     X,
     y,
-    train_size=0.8,
+    test_size=0.2,
     random_state=42,
     stratify=y
 )
 
-print(X_train.shape)
-print(X_test.shape)
-
-print(y_train.value_counts())
-print(y_test.value_counts())
-
+print("Training shape:", X_train.shape)
+print("Testing shape:", X_test.shape)
 
 
 # -----------------------------------------
-# Numerical pipeline
+# 3. Numerical Pipeline
 # -----------------------------------------
 
 numerical_pipeline = Pipeline([
     ("imputer", SimpleImputer(strategy="median"))
 ])
 
+
 # -----------------------------------------
-# Categoriacal pipeline
+# 4. Categorical Pipeline
 # -----------------------------------------
 
 categorical_pipeline = Pipeline([
@@ -80,8 +80,9 @@ categorical_pipeline = Pipeline([
     ("encoder", OneHotEncoder(handle_unknown="ignore"))
 ])
 
+
 # -----------------------------------------
-# Feature lists
+# 5. Feature Lists
 # -----------------------------------------
 
 numerical_features = [
@@ -109,8 +110,9 @@ categorical_features = [
     "PaymentMethod"
 ]
 
+
 # -----------------------------------------
-# preprocessor
+# 6. Column Transformer
 # -----------------------------------------
 
 preprocessor = ColumnTransformer([
@@ -118,93 +120,107 @@ preprocessor = ColumnTransformer([
     ("cat", categorical_pipeline, categorical_features)
 ])
 
-# -----------------------------------------
-# Apply preprocessing
-# -----------------------------------------
-
-X_train_processed = preprocessor.fit_transform(X_train)
-X_test_processed = preprocessor.transform(X_test)
-
-feature_names = preprocessor.get_feature_names_out()
-
-print("Number of features:", len(feature_names))
-print(feature_names)
-
 
 # -----------------------------------------
-# Decision tree
-# -----------------------------------------
-
-depths = [1, 2, 3, 4, 5, 7, 10, 15, 20]
-
-best_f1 = -1
-best_depth = None
-best_tree = None
-
-for depth in depths:
-
-    tree = DecisionTreeClassifier(
-        criterion="gini",
-        max_depth=depth,
-        random_state=42
-    )
-
-    tree.fit(X_train_processed, y_train)
-
-    print("Tree depth: ", tree.get_depth())
-    print("Number of leaves: ", tree.get_n_leaves())
-
-# -----------------------------------------
-# TEST PREDICTION
-# -----------------------------------------
-
-    y_test_pred = tree.predict(X_test_processed)
-
-# -----------------------------------------
-# TEST EVALUATION
-# -----------------------------------------
-
-    accuracy = accuracy_score(y_test, y_test_pred)
-    recall = recall_score(y_test, y_test_pred)
-    precision = precision_score(y_test, y_test_pred)
-    f1 = f1_score(y_test, y_test_pred)
-    cm = confusion_matrix(y_test, y_test_pred)
-
-    print("\n--- EVALUATION ---")
-    print("ACCURACY : ", accuracy)
-    print("RECALL :", recall)
-    print("PRECISION: ", precision)
-    print("F1 : ", f1)
-    print(cm)
-
-    if f1 > best_f1:
-        best_f1 = f1
-        best_depth = depth
-        best_tree = tree
-
-# -----------------------------------------
-# Cross validation (run only once, on training data)
+# 7. Complete ML Pipeline
 # -----------------------------------------
 
 model_pipeline = Pipeline([
     ("preprocessor", preprocessor),
     ("tree", DecisionTreeClassifier(
         criterion="gini",
-        max_depth=best_depth,
         random_state=42
     ))
 ])
 
-cv_scores = cross_val_score(
-    model_pipeline,
-    X_train,
-    y_train,
+
+# -----------------------------------------
+# 8. Hyperparameter Search
+# -----------------------------------------
+
+param_grid = {
+    "tree__max_depth": [1, 2, 3, 4, 5, 7, 10, 15, 20]
+}
+
+grid_search = GridSearchCV(
+    estimator=model_pipeline,
+    param_grid=param_grid,
+    scoring="f1",
     cv=5,
-    scoring="f1"
+    n_jobs=-1,
+    return_train_score=True
 )
 
+grid_search.fit(X_train, y_train)
+
+
+# -----------------------------------------
+# 9. Cross-Validation Results
+# -----------------------------------------
+
+results = pd.DataFrame(grid_search.cv_results_)
+
+results = results[[
+    "param_tree__max_depth",
+    "mean_train_score",
+    "mean_test_score",
+    "std_test_score",
+    "rank_test_score"
+]]
+
+results = results.sort_values("rank_test_score")
+
+print("\n--- CROSS VALIDATION RESULTS ---")
+print(results.to_string(index=False))
+
+
+# -----------------------------------------
+# 10. Best Model
+# -----------------------------------------
+
+best_model = grid_search.best_estimator_
+
 print("\n--- BEST MODEL ---")
-print("Best depth:", best_depth)
-print("Test F1:", best_f1)
-print("CV F1 scores:", cv_scores)
-print("CV F1 mean:", cv_scores.mean(), "± ", cv_scores.std())
+print("Best Parameters:", grid_search.best_params_)
+print("Best CV F1:", grid_search.best_score_)
+
+
+# -----------------------------------------
+# 11. Final Test Evaluation
+# -----------------------------------------
+
+y_test_pred = best_model.predict(X_test)
+
+y_test_proba = best_model.predict_proba(X_test)[:, 1]
+
+accuracy = accuracy_score(y_test, y_test_pred)
+precision = precision_score(y_test, y_test_pred, zero_division=0)
+recall = recall_score(y_test, y_test_pred, zero_division=0)
+f1 = f1_score(y_test, y_test_pred, zero_division=0)
+roc_auc = roc_auc_score(y_test, y_test_proba)
+
+cm = confusion_matrix(y_test, y_test_pred)
+
+
+# -----------------------------------------
+# 12. Print Evaluation
+# -----------------------------------------
+
+print("\n--- FINAL TEST RESULTS ---")
+
+print("Accuracy :", accuracy)
+print("Precision:", precision)
+print("Recall   :", recall)
+print("F1       :", f1)
+print("ROC-AUC  :", roc_auc)
+
+print("\nConfusion Matrix:")
+print(cm)
+
+print("\nClassification Report:")
+print(classification_report(
+    y_test,
+    y_test_pred,
+    target_names=["No Churn", "Churn"],
+    zero_division=0
+))
